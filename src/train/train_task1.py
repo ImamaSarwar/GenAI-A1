@@ -13,9 +13,9 @@ from src.data.corruptions import CLASS_NAMES
 from src.data.datasets import load_pet_tensors, PetTrainDataset, ManifestDataset
 from src.data.split import load_or_make_split
 from src.losses.losses import recon_loss, psnr_per_sample, ssim_per_sample
-from src.models.autoencoder import DAE
+from src.models.autoencoder import DAE, ConvDAE, build_model
 
-DEFAULT_CFG = dict(lr=1e-3, batch_size=32, base_ch=32, latent_dim=256, dropout=0.1,
+DEFAULT_CFG = dict(lr=1e-3, batch_size=32, arch="conv", base_ch=32, latent_dim=256, latent_ch=16, dropout=0.1,
                    alpha=0.8, weight_decay=1e-5, epochs=40, seed=42,
                    drive_root="/content/drive/MyDrive/GenAI-A1", run_name="task1_baseline")
 
@@ -71,7 +71,7 @@ def run_training(cfg=None, trial=None, use_mlflow=True, max_train=None,
     val_dl = DataLoader(ManifestDataset(trainval, "manifests/val_manifest.json"),
                         batch_size=128, shuffle=False, num_workers=2)
 
-    model = DAE(cfg["base_ch"], cfg["latent_dim"], cfg["dropout"]).to(device)
+    model = build_model(cfg).to(device)
     opt = torch.optim.AdamW(model.parameters(), lr=cfg["lr"], weight_decay=cfg["weight_decay"])
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=cfg["epochs"])
     n_params = sum(p.numel() for p in model.parameters())
