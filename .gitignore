@@ -1,0 +1,12 @@
+data/
+checkpoints/
+mlruns/
+outputs/
+*.pt
+*.pth
+*.db
+__pycache__/
+.ipynb_checkpoints/
+node_modules/
+.venv/
+.env
