@@ -79,4 +79,33 @@ def build_model(cfg):
     """arch='conv' -> spatial bottleneck (default); arch='vec' -> flat vector bottleneck."""
     if cfg.get("arch", "conv") == "vec":
         return DAE(cfg.get("base_ch", 32), cfg.get("latent_dim", 256), cfg.get("dropout", 0.1))
+    if cfg.get("arch") == "skip":
+        return SkipConvDAE(cfg["base_ch"], cfg["latent_ch"], cfg["dropout"], cfg.get("skip_ch", 8))
     return ConvDAE(cfg.get("base_ch", 32), cfg.get("latent_ch", 16), cfg.get("dropout", 0.1))
+
+
+class SkipConvDAE(nn.Module):
+    """ConvDAE + ONE limited skip: 16x16 encoder features -> 1x1 conv (skip_ch channels) -> concat in decoder at 16x16."""
+    def __init__(self, base_ch=32, latent_ch=16, dropout=0.1, skip_ch=8):
+        super().__init__()
+        c = [base_ch, base_ch * 2, base_ch * 4, base_ch * 8]
+        down = lambda ci, co: nn.Sequential(nn.Conv2d(ci, co, 4, 2, 1, bias=False), nn.BatchNorm2d(co), nn.LeakyReLU(0.2, True))
+        up = lambda ci, co: nn.Sequential(nn.Upsample(scale_factor=2, mode="nearest"),
+                                          nn.Conv2d(ci, co, 3, 1, 1, bias=False), nn.BatchNorm2d(co), nn.ReLU(True))
+        self.e = nn.ModuleList([down(3, c[0]), down(c[0], c[1]), down(c[1], c[2]), down(c[2], c[3])])
+        self.to_latent = nn.Conv2d(c[3], latent_ch, 1)
+        self.drop = nn.Dropout(dropout)
+        self.skip_proj = nn.Conv2d(c[2], skip_ch, 1)
+        self.dec_in = nn.Sequential(nn.Conv2d(latent_ch, c[3], 3, 1, 1, bias=False), nn.BatchNorm2d(c[3]), nn.ReLU(True))
+        self.u0 = up(c[3], c[2])                                   # 8 -> 16
+        self.fuse = nn.Sequential(nn.Conv2d(c[2] + skip_ch, c[2], 3, 1, 1, bias=False),
+                                  nn.BatchNorm2d(c[2]), nn.ReLU(True))
+        self.u1, self.u2, self.u3 = up(c[2], c[1]), up(c[1], c[0]), up(c[0], c[0])
+        self.out = nn.Sequential(nn.Conv2d(c[0], 3, 3, 1, 1), nn.Sigmoid())
+
+    def forward(self, x):
+        f0 = self.e[0](x); f1 = self.e[1](f0); f2 = self.e[2](f1); f3 = self.e[3](f2)
+        z = self.drop(self.to_latent(f3))
+        h = self.u0(self.dec_in(z))
+        h = self.fuse(torch.cat([h, self.skip_proj(f2)], dim=1))
+        return self.out(self.u3(self.u2(self.u1(h))))
