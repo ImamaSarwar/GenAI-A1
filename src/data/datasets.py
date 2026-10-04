@@ -95,3 +95,31 @@ class ManifestDataset(Dataset):
         clean = self.images[e["image_idx"]].float() / 255.0
         corrupted = apply_corruption(clean, e["params"])
         return corrupted, clean, e["label"], e["severity_level"], e["id"]
+
+
+class BalancedPetDataset(Dataset):
+    """Classifier training set. label = i % 4, so with shuffle=False and batch_size % 4 == 0
+    every batch holds exactly batch_size/4 samples of each class. Images are drawn at random
+    (with replacement) and a fresh corruption is generated at runtime on every call.
+    Returns (corrupted, label)."""
+    def __init__(self, images, indices, epoch_len=None):
+        self.images = images
+        self.indices = list(indices)
+        self.n = epoch_len or len(self.indices)
+        self._rng, self._pid = None, None
+
+    def __len__(self):
+        return self.n
+
+    def _get_rng(self):
+        pid = os.getpid()
+        if self._rng is None or self._pid != pid:
+            self._rng = np.random.default_rng([torch.initial_seed() % 2**32, pid])
+            self._pid = pid
+        return self._rng
+
+    def __getitem__(self, i):
+        rng = self._get_rng()
+        label = i % 4
+        clean = self.images[self.indices[int(rng.integers(len(self.indices)))]].float() / 255.0
+        return apply_corruption(clean, sample_params(label, rng)), label
