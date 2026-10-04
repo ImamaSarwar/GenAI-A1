@@ -1,0 +1,14 @@
+{
+  "study": "task1_universal_dae",
+  "n_complete": 12,
+  "n_pruned": 18,
+  "best_value": 1.185331892967224,
+  "params": {
+    "lr": 0.0007410447534521612,
+    "batch_size": 16,
+    "base_ch": 64,
+    "latent_ch": 64,
+    "dropout": 0.20522837185737938,
+    "alpha": 0.5731526745470932
+  }
+}
